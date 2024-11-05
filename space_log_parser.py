@@ -38,7 +38,6 @@ def parse_log_file(log_file_path):
                     })
     except FileNotFoundError:
         print(f"File '{log_file_path}' not found. Creating a new log file.")
-        # Create an empty log file
         with open(log_file_path, 'w') as file:
             pass
     return log_entries
@@ -139,7 +138,6 @@ def detect_log_bursts(entries, event_type=BURST_EVENT_TYPE, n=BURST_THRESHOLD, m
             burst_start = event_timestamps[left]
             burst_end = event_timestamps[right]
             bursts.append((burst_start, burst_end))
-            # Move left to avoid overlapping bursts
             left += 1
 
     if bursts:
