@@ -1,11 +1,19 @@
 from itertools import tee
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
 import time
 import sys
-import os 
-#I believe I have already sent over the github repo but heres the .py file anyways
+import os
+
+# Configuration of constants for the adjusted problem statement
+BURST_EVENT_TYPE = "WARNING"          
+BURST_THRESHOLD = 5                    
+BURST_TIME_WINDOW_MINUTES = 3         
+
+ERROR_THRESHOLD = 5                   
+ERROR_TIME_WINDOW_MINUTES = 60         
+
 # Instructions for usage:
 #1. Run the script
 #2. Enter the path to the log file when prompted. If not, a new file will be created.
@@ -30,7 +38,7 @@ def parse_log_file(log_file_path):
                     })
     except FileNotFoundError:
         print(f"File '{log_file_path}' not found. Creating a new log file.")
-        # Create an empty log file incase none exist👍👍
+        # Create an empty log file
         with open(log_file_path, 'w') as file:
             pass
     return log_entries
@@ -60,7 +68,7 @@ def extract_events_by_date_range(entries, start_date_str, end_date_str):
         start_datetime = parse_date(start_date_str)
         end_datetime = parse_date(end_date_str)
 
-        # If time is not provided, the program should set start time to 00:00:00 and end time to 23:59:59, although this is not required :)
+        # If time is not provided, set start time to 00:00:00 and end time to 23:59:59
         if len(start_date_str) == 10:
             start_datetime = start_datetime.replace(hour=0, minute=0, second=0)
         if len(end_date_str) == 10:
@@ -118,16 +126,63 @@ def add_log_entry(log_file_path):
         file.write(log_entry + '\n')
         print(f"Log entry written to '{log_file_path}'.")
 
+def detect_log_bursts(entries, event_type=BURST_EVENT_TYPE, n=BURST_THRESHOLD, m=BURST_TIME_WINDOW_MINUTES):
+    bursts = []
+    event_timestamps = sorted([entry['timestamp'] for entry in entries if entry['event_type'] == event_type])
+
+    left = 0
+    for right in range(len(event_timestamps)):
+        while event_timestamps[right] - event_timestamps[left] > timedelta(minutes=m):
+            left += 1
+        window_size = right - left + 1
+        if window_size >= n:
+            burst_start = event_timestamps[left]
+            burst_end = event_timestamps[right]
+            bursts.append((burst_start, burst_end))
+            # Move left to avoid overlapping bursts
+            left += 1
+
+    if bursts:
+        print(f"\n*** Detected {len(bursts)} burst(s) for event type '{event_type}': ***")
+        for idx, (start, end) in enumerate(bursts, 1):
+            print(f" Burst {idx}: {start} to {end} ({n} events within {m} minutes)")
+
+def generate_error_alerts(entries, threshold=ERROR_THRESHOLD, window_minutes=ERROR_TIME_WINDOW_MINUTES):
+    error_events = sorted([entry['timestamp'] for entry in entries if entry['event_type'] == 'ERROR'])
+
+    alerts = []
+    left = 0
+    for right in range(len(error_events)):
+        while error_events[right] - error_events[left] > timedelta(minutes=window_minutes):
+            left += 1
+        window_size = right - left + 1
+        if window_size >= threshold:
+            alert_time = error_events[left]
+            alerts.append(alert_time)
+            left += 1
+
+    if alerts:
+        print(f"\n*** ALERT: Detected {len(alerts)} high-error period(s): ***")
+        for idx, alert_time in enumerate(alerts, 1):
+            print(f" Alert {idx}: Starting at {alert_time}")
+
 def run_parser(log_file_path):
     entries = parse_log_file(log_file_path)
+
+    # I had a manual detection function but made it automatic now
+    detect_log_bursts(entries)
+
+    # Automatically generate error alerts, should work now, didnt test with extreme use-cases
+    generate_error_alerts(entries)
+
     while True:
         print("\nSpace Logbook Parser")
         print("1. Filter Events by Type")
         print("2. Count Events by Type")
         print("3. Extract Events by Date Range")
         print("4. Display Summary Report")
-        print("5. Add Log Entry")       
-        print("6. Exit")                 
+        print("5. Add Log Entry")
+        print("6. Exit")
         choice = input("Select an option (1-6): ")
 
         if choice == '1':
@@ -176,6 +231,8 @@ def run_parser(log_file_path):
         elif choice == '5':  
             add_log_entry(log_file_path)
             entries = parse_log_file(log_file_path) 
+            detect_log_bursts(entries)
+            generate_error_alerts(entries)
 
         elif choice == '6': 
             poem = """Do not go gentle into that good night,
@@ -205,10 +262,10 @@ Rage, rage against the dying of the light."""
     
             print_with_aura(poem)
             break
-            # I hope you see this, this took a lot of effort :), plus its a neat reference imo
+            # I hope you see this, this took a lot of effort :)
 
         else:
             print("Invalid option. Please select a number between 1 and 6.")
 
 if __name__ == "__main__":
-        run_parser('space_log.txt')
+    run_parser('space_log.txt')
